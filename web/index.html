@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat-Go - WebRTC 语音聊天</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f0f0f0;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .auth-section {
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .chat-section {
+            display: none;
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .rooms-panel {
+            width: 300px;
+            float: left;
+            margin-right: 20px;
+        }
+        .room-chat {
+            overflow: hidden;
+        }
+        h1, h2 {
+            color: #333;
+        }
+        input, button, textarea {
+            display: block;
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .btn-danger {
+            background-color: #dc3545;
+        }
+        .btn-danger:hover {
+            background-color: #c82333;
+        }
+        .btn-success {
+            background-color: #28a745;
+        }
+        .btn-success:hover {
+            background-color: #218838;
+        }
+        .room-item {
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            cursor: pointer;
+        }
+        .room-item:hover {
+            background-color: #e9ecef;
+        }
+        .room-info {
+            margin-bottom: 20px;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+        }
+        .users-list {
+            margin-bottom: 20px;
+        }
+        .user-item {
+            display: inline-block;
+            padding: 5px 10px;
+            margin: 5px;
+            background-color: #e9ecef;
+            border-radius: 20px;
+        }
+        .status-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+        .status-online {
+            background-color: #28a745;
+        }
+        .status-offline {
+            background-color: #dc3545;
+        }
+        .audio-controls {
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Chat-Go - WebRTC 语音聊天</h1>
+
+        <!-- Authentication Section -->
+        <div class="auth-section">
+            <h2>用户认证</h2>
+            <div id="register-form">
+                <input type="text" id="reg-username" placeholder="用户名">
+                <input type="email" id="reg-email" placeholder="邮箱">
+                <input type="password" id="reg-password" placeholder="密码">
+                <input type="text" id="reg-displayname" placeholder="显示名称">
+                <button onclick="register()">注册</button>
+            </div>
+            <div id="login-form">
+                <input type="text" id="login-username" placeholder="用户名或邮箱">
+                <input type="password" id="login-password" placeholder="密码">
+                <button onclick="login()">登录</button>
+            </div>
+        </div>
+
+        <!-- Chat Section -->
+        <div class="chat-section">
+            <h2>房间列表</h2>
+            <div style="display: flex;">
+                <div class="rooms-panel">
+                    <div>
+                        <input type="text" id="new-room-name" placeholder="房间名称">
+                        <textarea id="new-room-desc" placeholder="房间描述"></textarea>
+                        <button onclick="createRoom()">创建房间</button>
+                    </div>
+                    <div id="rooms-list">
+                        <!-- Rooms will be populated here -->
+                    </div>
+                </div>
+                <div class="room-chat">
+                    <div id="current-room-info" class="room-info">
+                        <!-- Current room info will be here -->
+                    </div>
+                    <div class="users-list">
+                        <h3>房间用户:</h3>
+                        <div id="room-users"></div>
+                    </div>
+                    <div class="audio-controls">
+                        <button id="join-audio-btn" class="btn-success" onclick="joinAudio()">加入音频</button>
+                        <button id="leave-audio-btn" class="btn-danger" onclick="leaveAudio()" disabled>离开音频</button>
+                        <button id="leave-room-btn" class="btn-danger" onclick="leaveCurrentRoom()">离开房间</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/grpc-web@1.2.1/dist/grpc-web.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@improbable-eng/grpc-web@0.15.0/dist/grpc-web-client.umd.js"></script>
+    
+    <!-- Generated protobuf JS files -->
+    <script src="/js/char_grpc_web_pb.js"></script>
+    <script src="/js/char_pb.js"></script>
+
+    <script>
+        // Global variables
+        let currentUser = null;
+        let currentRoom = null;
+        let wsConnection = null;
+        let peerConnections = {};
+        let localStream = null;
+        let isAudioJoined = false;
+
+        // gRPC client setup
+        const { grpc } = window;
+        const { UserServiceClient, RoomServiceClient } = window.char;
+        const { RegisterRequest, LoginRequest, CreateRoomRequest, JoinRoomRequest, LeaveRoomRequest } = window.char;
+
+        const userClient = new UserServiceClient('http://localhost:50051', null, null);
+        const roomClient = new RoomServiceClient('http://localhost:50051', null, null);
+
+        // Register function
+        function register() {
+            const username = document.getElementById('reg-username').value;
+            const email = document.getElementById('reg-email').value;
+            const password = document.getElementById('reg-password').value;
+            const displayName = document.getElementById('reg-displayname').value;
+
+            const request = new RegisterRequest();
+            request.setUsername(username);
+            request.setEmail(email);
+            request.setPassword(password);
+            request.setDisplayname(displayName);
+
+            userClient.register(request, {}, (err, response) => {
+                if (err) {
+                    alert('注册失败: ' + err.message);
+                    return;
+                }
+                alert('注册成功');
+                loginWithCredentials(username, password);
+            });
+        }
+
+        // Login function
+        function login() {
+            const username = document.getElementById('login-username').value;
+            const password = document.getElementById('login-password').value;
+            loginWithCredentials(username, password);
+        }
+
+        // Login helper function
+        function loginWithCredentials(username, password) {
+            const request = new LoginRequest();
+            request.setUsername(username);
+            request.setPassword(password);
+
+            userClient.login(request, {}, (err, response) => {
+                if (err) {
+                    alert('登录失败: ' + err.message);
+                    return;
+                }
+                
+                currentUser = {
+                    id: response.getUserid(),
+                    username: response.getUsername(),
+                    displayName: response.getDisplayname(),
+                    token: response.getToken()
+                };
+                
+                alert('登录成功，欢迎 ' + currentUser.displayName);
+                showChatSection();
+                connectWebSocket();
+                loadRooms();
+            });
+        }
+
+        // Show chat section
+        function showChatSection() {
+            document.querySelector('.auth-section').style.display = 'none';
+            document.querySelector('.chat-section').style.display = 'block';
+        }
+
+        // Create room
+        function createRoom() {
+            const name = document.getElementById('new-room-name').value;
+            const description = document.getElementById('new-room-desc').value;
+
+            const request = new CreateRoomRequest();
+            request.setName(name);
+            request.setDescription(description);
+            request.setIspublic(true);
+
+            const metadata = {'token': currentUser.token};
+            
+            roomClient.createRoom(request, metadata, (err, response) => {
+                if (err) {
+                    alert('创建房间失败: ' + err.message);
+                    return;
+                }
+                
+                alert('房间创建成功');
+                loadRooms();
+            });
+        }
+
+        // Load rooms
+        function loadRooms() {
+            const request = new window.char.ListRoomsRequest();
+            const metadata = {'token': currentUser.token};
+            
+            roomClient.listRooms(request, metadata, (err, response) => {
+                if (err) {
+                    alert('加载房间列表失败: ' + err.message);
+                    return;
+                }
+                
+                const roomsList = response.getRoomsList();
+                const roomsContainer = document.getElementById('rooms-list');
+                roomsContainer.innerHTML = '';
+                
+                roomsList.forEach(room => {
+                    const roomDiv = document.createElement('div');
+                    roomDiv.className = 'room-item';
+                    roomDiv.innerHTML = `
+                        <h4>${room.getName()}</h4>
+                        <p>${room.getDescription()}</p>
+                        <p>用户数: ${room.getUserscount()}</p>
+                    `;
+                    roomDiv.onclick = () => joinRoom(room.getId());
+                    roomsContainer.appendChild(roomDiv);
+                });
+            });
+        }
+
+        // Join room
+        function joinRoom(roomId) {
+            const request = new JoinRoomRequest();
+            request.setRoomid(roomId);
+            
+            const metadata = {'token': currentUser.token};
+            
+            roomClient.joinRoom(request, metadata, (err, response) => {
+                if (err) {
+                    alert('加入房间失败: ' + err.message);
+                    return;
+                }
+                
+                currentRoom = response.getRoom();
+                updateCurrentRoomInfo();
+                loadRoomUsers();
+                
+                // Notify WebSocket about room join
+                if (wsConnection) {
+                    wsConnection.send(JSON.stringify({
+                        type: 'join_room',
+                        payload: {
+                            room_id: currentRoom.getId()
+                        }
+                    }));
+                }
+            });
+        }
+
+        // Leave current room
+        function leaveCurrentRoom() {
+            if (!currentRoom) return;
+            
+            leaveAudio();
+            
+            const request = new LeaveRoomRequest();
+            request.setRoomid(currentRoom.getId());
+            
+            const metadata = {'token': currentUser.token};
+            
+            roomClient.leaveRoom(request, metadata, (err, response) => {
+                if (err) {
+                    alert('离开房间失败: ' + err.message);
+                    return;
+                }
+                
+                // Notify WebSocket about room leave
+                if (wsConnection) {
+                    wsConnection.send(JSON.stringify({
+                        type: 'leave_room',
+                        payload: {
+                            room_id: currentRoom.getId()
+                        }
+                    }));
+                }
+                
+                currentRoom = null;
+                updateCurrentRoomInfo();
+                document.getElementById('room-users').innerHTML = '';
+            });
+        }
+
+        // Update current room info
+        function updateCurrentRoomInfo() {
+            const infoDiv = document.getElementById('current-room-info');
+            if (currentRoom) {
+                infoDiv.innerHTML = `
+                    <h3>${currentRoom.getName()}</h3>
+                    <p>${currentRoom.getDescription()}</p>
+                    <p>创建者: ${currentRoom.getCreatorname()}</p>
+                    <p>用户数: ${currentRoom.getUserscount()}</p>
+                `;
+            } else {
+                infoDiv.innerHTML = '<p>未加入任何房间</p>';
+            }
+        }
+
+        // Load room users
+        function loadRoomUsers() {
+            if (!currentRoom) return;
+            
+            const request = new window.char.GetRoomInfoRequest();
+            request.setRoomid(currentRoom.getId());
+            
+            const metadata = {'token': currentUser.token};
+            
+            roomClient.getRoomInfo(request, metadata, (err, response) => {
+                if (err) {
+                    alert('加载房间用户失败: ' + err.message);
+                    return;
+                }
+                
+                const users = response.getRoom().getUsersList();
+                const usersDiv = document.getElementById('room-users');
+                usersDiv.innerHTML = '';
+                
+                users.forEach(user => {
+                    const userDiv = document.createElement('div');
+                    userDiv.className = 'user-item';
+                    userDiv.innerHTML = `
+                        <span class="status-indicator status-${user.getOnline() ? 'online' : 'offline'}"></span>
+                        ${user.getDisplayname()}
+                    `;
+                    usersDiv.appendChild(userDiv);
+                });
+            });
+        }
+
+        // Connect to WebSocket
+        function connectWebSocket() {
+            if (wsConnection) return;
+            
+            const wsUrl = `ws://localhost:8080/ws?user_id=${currentUser.id}`;
+            wsConnection = new WebSocket(wsUrl);
+            
+            wsConnection.onopen = () => {
+                console.log('WebSocket connection established');
+            };
+            
+            wsConnection.onmessage = (event) => {
+                handleWebSocketMessage(event.data);
+            };
+            
+            wsConnection.onclose = () => {
+                console.log('WebSocket connection closed');
+                wsConnection = null;
+            };
+            
+            wsConnection.onerror = (error) => {
+                console.error('WebSocket error:', error);
+            };
+        }
+
+        // Handle WebSocket messages
+        function handleWebSocketMessage(data) {
+            const message = JSON.parse(data);
+            
+            switch (message.type) {
+                case 'user_joined':
+                    const user = JSON.parse(message.payload);
+                    if (user.user_id !== currentUser.id) {
+                        addUserToRoom(user);
+                        // Create peer connection for new user
+                        if (isAudioJoined) {
+                            createPeerConnection(user.user_id);
+                        }
+                    }
+                    break;
+                case 'user_left':
+                    const leftUser = JSON.parse(message.payload);
+                    removeUserFromRoom(leftUser.user_id);
+                    // Close peer connection
+                    closePeerConnection(leftUser.user_id);
+                    break;
+                case 'sdp_offer':
+                    handleSdpOffer(message);
+                    break;
+                case 'sdp_answer':
+                    handleSdpAnswer(message);
+                    break;
+                case 'ice_candidate':
+                    handleIceCandidate(message);
+                    break;
+            }
+        }
+
+        // Add user to room display
+        function addUserToRoom(user) {
+            const usersDiv = document.getElementById('room-users');
+            const userDiv = document.createElement('div');
+            userDiv.id = `user-${user.user_id}`;
+            userDiv.className = 'user-item';
+            userDiv.innerHTML = `
+                <span class="status-indicator status-online"></span>
+                ${user.user_name}
+            `;
+            usersDiv.appendChild(userDiv);
+        }
+
+        // Remove user from room display
+        function removeUserFromRoom(userId) {
+            const userDiv = document.getElementById(`user-${userId}`);
+            if (userDiv) {
+                userDiv.remove();
+            }
+        }
+
+        // Join audio
+        async function joinAudio() {
+            try {
+                // Get local audio stream
+                localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                isAudioJoined = true;
+                
+                // Update UI
+                document.getElementById('join-audio-btn').disabled = true;
+                document.getElementById('leave-audio-btn').disabled = false;
+                
+                // Create peer connections for all existing users in the room
+                const users = document.querySelectorAll('.user-item');
+                users.forEach(userDiv => {
+                    const userId = parseInt(userDiv.id.split('-')[1]);
+                    if (userId !== currentUser.id) {
+                        createPeerConnection(userId);
+                    }
+                });
+                
+            } catch (error) {
+                console.error('Error accessing media devices:', error);
+                alert('无法访问麦克风: ' + error.message);
+            }
+        }
+
+        // Leave audio
+        function leaveAudio() {
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
+            }
+            
+            isAudioJoined = false;
+            
+            // Close all peer connections
+            Object.keys(peerConnections).forEach(userId => {
+                closePeerConnection(parseInt(userId));
+            });
+            
+            // Update UI
+            document.getElementById('join-audio-btn').disabled = false;
+            document.getElementById('leave-audio-btn').disabled = true;
+        }
+
+        // Create peer connection
+        function createPeerConnection(userId) {
+            if (peerConnections[userId]) return;
+            
+            const pc = new RTCPeerConnection({
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' }
+                ]
+            });
+            
+            peerConnections[userId] = pc;
+            
+            // Add local stream to peer connection
+            if (localStream) {
+                localStream.getTracks().forEach(track => {
+                    pc.addTrack(track, localStream);
+                });
+            }
+            
+            // Handle ICE candidates
+            pc.onicecandidate = (event) => {
+                if (event.candidate) {
+                    wsConnection.send(JSON.stringify({
+                        type: 'ice_candidate',
+                        target_id: userId,
+                        payload: event.candidate
+                    }));
+                }
+            };
+            
+            // Handle remote stream
+            pc.ontrack = (event) => {
+                console.log('Received remote stream from user:', userId);
+                // Create audio element for remote stream
+                const audioElement = document.createElement('audio');
+                audioElement.srcObject = event.streams[0];
+                audioElement.autoplay = true;
+                audioElement.id = `remote-audio-${userId}`;
+                document.body.appendChild(audioElement);
+            };
+            
+            // Create and send SDP offer
+            pc.createOffer()
+                .then(offer => pc.setLocalDescription(offer))
+                .then(() => {
+                    wsConnection.send(JSON.stringify({
+                        type: 'sdp_offer',
+                        target_id: userId,
+                        payload: pc.localDescription
+                    }));
+                })
+                .catch(error => {
+                    console.error('Error creating SDP offer:', error);
+                });
+        }
+
+        // Close peer connection
+        function closePeerConnection(userId) {
+            const pc = peerConnections[userId];
+            if (pc) {
+                pc.close();
+                delete peerConnections[userId];
+                
+                // Remove audio element
+                const audioElement = document.getElementById(`remote-audio-${userId}`);
+                if (audioElement) {
+                    audioElement.remove();
+                }
+            }
+        }
+
+        // Handle SDP offer
+        function handleSdpOffer(message) {
+            const senderId = message.user_id;
+            const sdpOffer = JSON.parse(message.payload);
+            
+            // Create peer connection if not exists
+            if (!peerConnections[senderId]) {
+                createPeerConnectionForAnswer(senderId);
+            }
+            
+            const pc = peerConnections[senderId];
+            
+            // Set remote description and create answer
+            pc.setRemoteDescription(new RTCSessionDescription(sdpOffer))
+                .then(() => pc.createAnswer())
+                .then(answer => pc.setLocalDescription(answer))
+                .then(() => {
+                    wsConnection.send(JSON.stringify({
+                        type: 'sdp_answer',
+                        target_id: senderId,
+                        payload: pc.localDescription
+                    }));
+                })
+                .catch(error => {
+                    console.error('Error handling SDP offer:', error);
+                });
+        }
+
+        // Create peer connection for answering
+        function createPeerConnectionForAnswer(userId) {
+            if (peerConnections[userId]) return;
+            
+            const pc = new RTCPeerConnection({
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' }
+                ]
+            });
+            
+            peerConnections[userId] = pc;
+            
+            // Add local stream to peer connection
+            if (localStream) {
+                localStream.getTracks().forEach(track => {
+                    pc.addTrack(track, localStream);
+                });
+            }
+            
+            // Handle ICE candidates
+            pc.onicecandidate = (event) => {
+                if (event.candidate) {
+                    wsConnection.send(JSON.stringify({
+                        type: 'ice_candidate',
+                        target_id: userId,
+                        payload: event.candidate
+                    }));
+                }
+            };
+            
+            // Handle remote stream
+            pc.ontrack = (event) => {
+                console.log('Received remote stream from user:', userId);
+                // Create audio element for remote stream
+                const audioElement = document.createElement('audio');
+                audioElement.srcObject = event.streams[0];
+                audioElement.autoplay = true;
+                audioElement.id = `remote-audio-${userId}`;
+                document.body.appendChild(audioElement);
+            };
+        }
+
+        // Handle SDP answer
+        function handleSdpAnswer(message) {
+            const senderId = message.user_id;
+            const sdpAnswer = JSON.parse(message.payload);
+            
+            const pc = peerConnections[senderId];
+            if (pc) {
+                pc.setRemoteDescription(new RTCSessionDescription(sdpAnswer))
+                    .catch(error => {
+                        console.error('Error handling SDP answer:', error);
+                    });
+            }
+        }
+
+        // Handle ICE candidate
+        function handleIceCandidate(message) {
+            const senderId = message.user_id;
+            const iceCandidate = JSON.parse(message.payload);
+            
+            const pc = peerConnections[senderId];
+            if (pc) {
+                pc.addIceCandidate(new RTCIceCandidate(iceCandidate))
+                    .catch(error => {
+                        console.error('Error handling ICE candidate:', error);
+                    });
+            }
+        }
+
+        // Leave current room
+        function leaveCurrentRoom() {
+            leaveAudio();
+            leaveCurrentRoom();
+        }
+
+        // Auto refresh rooms list every 30 seconds
+        setInterval(() => {
+            if (currentUser) {
+                loadRooms();
+                if (currentRoom) {
+                    loadRoomUsers();
+                }
+            }
+        }, 30000);
+    </script>
+</body>
+</html>

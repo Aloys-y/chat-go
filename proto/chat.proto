@@ -1,0 +1,118 @@
+syntax = "proto3";
+
+package char;
+
+option go_package = "github.com/yourusername/chat-go/proto";
+
+// User Service
+service UserService {
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+  rpc Login(LoginRequest) returns (LoginResponse);
+  rpc GetUserInfo(GetUserInfoRequest) returns (UserInfo);
+  rpc UpdateUserStatus(UpdateUserStatusRequest) returns (Empty);
+}
+
+// Room Service
+service RoomService {
+  rpc CreateRoom(CreateRoomRequest) returns (RoomInfo);
+  rpc JoinRoom(JoinRoomRequest) returns (RoomInfo);
+  rpc LeaveRoom(LeaveRoomRequest) returns (Empty);
+  rpc GetRoomInfo(GetRoomInfoRequest) returns (RoomInfo);
+  rpc ListRooms(ListRoomsRequest) returns (ListRoomsResponse);
+  rpc ListRoomUsers(ListRoomUsersRequest) returns (ListUsersResponse);
+}
+
+// Request/Response Messages
+message RegisterRequest {
+  string username = 1;
+  string email = 2;
+  string password = 3;
+  string display_name = 4;
+}
+
+message RegisterResponse {
+  UserInfo user = 1;
+  string token = 2;
+}
+
+message LoginRequest {
+  string email = 1;
+  string password = 2;
+}
+
+message LoginResponse {
+  UserInfo user = 1;
+  string token = 2;
+}
+
+message GetUserInfoRequest {
+  uint64 user_id = 1;
+}
+
+message UpdateUserStatusRequest {
+  uint64 user_id = 1;
+  bool is_online = 2;
+}
+
+message CreateRoomRequest {
+  string name = 1;
+  string description = 2;
+  bool is_public = 3;
+  uint64 owner_id = 4;
+}
+
+message JoinRoomRequest {
+  uint64 room_id = 1;
+  uint64 user_id = 2;
+}
+
+message LeaveRoomRequest {
+  uint64 room_id = 1;
+  uint64 user_id = 2;
+}
+
+message GetRoomInfoRequest {
+  uint64 room_id = 1;
+}
+
+message ListRoomsRequest {
+  bool is_public = 1;
+  int32 page = 2;
+  int32 page_size = 3;
+}
+
+message ListRoomUsersRequest {
+  uint64 room_id = 1;
+}
+
+// Response Messages
+message UserInfo {
+  uint64 id = 1;
+  string username = 2;
+  string email = 3;
+  string display_name = 4;
+  bool is_online = 5;
+}
+
+message RoomInfo {
+  uint64 id = 1;
+  string name = 2;
+  string description = 3;
+  bool is_public = 4;
+  UserInfo owner = 5;
+  int32 user_count = 6;
+}
+
+message ListRoomsResponse {
+  repeated RoomInfo rooms = 1;
+  int32 total_count = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+}
+
+message ListUsersResponse {
+  repeated UserInfo users = 1;
+}
+
+message Empty {
+}
