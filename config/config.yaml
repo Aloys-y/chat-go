@@ -8,7 +8,7 @@ database:
   port: 3306
   user: root
   password: password
-  dbname: char_go
+  dbname: chat_go
   charset: utf8mb4
   parseTime: true
 

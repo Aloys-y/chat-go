@@ -64,12 +64,17 @@ database:
 ### 3. 生成gRPC代码
 
 ```bash
+# 安装protoc-gen-go插件
 go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.28
+# 安装protoc-gen-go-grpc插件
 go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.2
-go install github.com/improbable-eng/grpc-web/go/grpcwebproxy/protoc-gen-grpc-web@v0.15.0
+# 使用npm安装grpc-web插件（用于Web客户端）
+npm install -g protoc-gen-grpc-web
 
-protoc --go_out=. --go-grpc_out=. proto/char.proto
-protoc --grpc-web_out=import_style=commonjs,mode=grpcwebtext:. proto/char.proto
+# 生成Go gRPC代码
+protoc --go_out=. --go-grpc_out=. proto/chat.proto
+# 生成Web gRPC代码（可选）
+protoc --grpc-web_out=import_style=commonjs,mode=grpcwebtext:. proto/chat.proto
 ```
 
 ### 4. 运行项目

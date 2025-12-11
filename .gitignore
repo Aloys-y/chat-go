@@ -1,0 +1,47 @@
+# Go build files
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Go test binaries
+*_test
+
+# Go coverage reports
+*.out
+
+# Module dependencies
+go.work
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE/editor configuration
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Log files
+*.log
+logs/
+
+# Configuration files (containing sensitive info)
+config/config.yaml
+
+# Build cache
+vendor/
+__pycache__/
+
+# Protocol Buffers compiled files
+# proto/*.pb.go
+# proto/*.pb.gw.go
+# proto/*.grpc.pb.go

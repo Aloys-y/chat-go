@@ -4,26 +4,36 @@ import (
 	"context"
 	"errors"
 
-	"github.com/yourusername/chat-go/auth"
-	"github.com/yourusername/chat-go/db"
-	"github.com/yourusername/chat-go/models"
-	"github.com/yourusername/chat-go/proto"
+	"github.com/Aloys-y/chat-go/auth"
+	"github.com/Aloys-y/chat-go/db"
+	"github.com/Aloys-y/chat-go/models"
+	"github.com/Aloys-y/chat-go/proto"
 )
 
-type UserServiceImpl struct{}
+type UserServiceImpl struct {
+	proto.UnimplementedUserServiceServer
+}
 
 // Register implements UserServiceServer
 func (s *UserServiceImpl) Register(ctx context.Context, req *proto.RegisterRequest) (*proto.RegisterResponse, error) {
+	// 参数验证
+	if req.Username == "" || req.Email == "" || req.Password == "" || req.DisplayName == "" {
+		return nil, errors.New("username, email, password, and display name are required")
+	}
+
+	// 1. 调用认证模块的注册函数
 	user, err := auth.RegisterUser(req.Username, req.Email, req.Password, req.DisplayName)
 	if err != nil {
 		return nil, err
 	}
 
+	// 2. 生成JWT令牌
 	token, err := auth.GenerateToken(user)
 	if err != nil {
 		return nil, err
 	}
 
+	// 3. 构造并返回响应
 	return &proto.RegisterResponse{
 		User: &proto.UserInfo{
 			Id:          uint64(user.ID),

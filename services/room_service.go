@@ -2,14 +2,16 @@ package services
 
 import (
 	"context"
-	"errors"
+	"fmt"
 
-	"github.com/yourusername/chat-go/db"
-	"github.com/yourusername/chat-go/models"
-	"github.com/yourusername/chat-go/proto"
+	"github.com/Aloys-y/chat-go/db"
+	"github.com/Aloys-y/chat-go/models"
+	"github.com/Aloys-y/chat-go/proto"
 )
 
-type RoomServiceImpl struct{}
+type RoomServiceImpl struct {
+	proto.UnimplementedRoomServiceServer
+}
 
 // CreateRoom implements RoomServiceServer
 func (s *RoomServiceImpl) CreateRoom(ctx context.Context, req *proto.CreateRoomRequest) (*proto.RoomInfo, error) {
@@ -64,9 +66,16 @@ func (s *RoomServiceImpl) JoinRoom(ctx context.Context, req *proto.JoinRoomReque
 	}
 
 	// Check if user is already in the room
-	var count int
-	if err := db.DB.Model(&room).Where("id = ?", req.UserId).Association("Users").Count(&count); err != nil || count > 0 {
-		return nil, nil // User already in room
+	var users []*models.User
+	if err := db.DB.Model(&room).Association("Users").Find(&users); err != nil {
+		return nil, err
+	}
+
+	// Check if the user is already in the room
+	for _, u := range users {
+		if u.ID == uint(req.UserId) {
+			return nil, nil // User already in room
+		}
 	}
 
 	// Add user to the room
@@ -101,16 +110,16 @@ func (s *RoomServiceImpl) LeaveRoom(ctx context.Context, req *proto.LeaveRoomReq
 	var user models.User
 
 	if err := db.DB.First(&room, req.RoomId).Error; err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to find room: %w", err)
 	}
 
 	if err := db.DB.First(&user, req.UserId).Error; err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to find user: %w", err)
 	}
 
 	// Remove user from the room
 	if err := db.DB.Model(&room).Association("Users").Delete(&user); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to remove user from room: %w", err)
 	}
 
 	return &proto.Empty{}, nil
@@ -120,7 +129,7 @@ func (s *RoomServiceImpl) LeaveRoom(ctx context.Context, req *proto.LeaveRoomReq
 func (s *RoomServiceImpl) GetRoomInfo(ctx context.Context, req *proto.GetRoomInfoRequest) (*proto.RoomInfo, error) {
 	var room models.Room
 	if err := db.DB.Preload("Owner").First(&room, req.RoomId).Error; err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to find room: %w", err)
 	}
 
 	return &proto.RoomInfo{
@@ -189,7 +198,7 @@ func (s *RoomServiceImpl) ListRoomUsers(ctx context.Context, req *proto.ListRoom
 
 	var users []models.User
 	if err := db.DB.Model(&room).Association("Users").Find(&users).Error; err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to find room users: %w", err)
 	}
 
 	userInfos := make([]*proto.UserInfo, 0, len(users))

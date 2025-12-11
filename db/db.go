@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/yourusername/chat-go/config"
-	"github.com/yourusername/chat-go/models"
-	"github.com/jinzhu/gorm"
-	_ "github.com/go-sql-driver/mysql" // MySQL driver
+	"github.com/Aloys-y/chat-go/config"
+	"github.com/Aloys-y/chat-go/models"
+
+	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 var DB *gorm.DB
@@ -21,16 +23,27 @@ func InitDB() error {
 		cfg.User, cfg.Password, cfg.Host, cfg.Port, cfg.DBName, cfg.Charset, cfg.ParseTime)
 
 	var err error
-	DB, err = gorm.Open("mysql", dsn)
+	DB, err = gorm.Open(mysql.Open(dsn), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Info),
+	})
 	if err != nil {
 		return fmt.Errorf("failed to connect to MySQL database: %w", err)
 	}
 
-	// Enable logging
-	DB.LogMode(true)
+	// Get generic database object sql.DB to use its functions
+	sqlDB, err := DB.DB()
+	if err != nil {
+		return fmt.Errorf("failed to get database object: %w", err)
+	}
+
+	// SetMaxIdleConns sets the maximum number of connections in the idle connection pool
+	sqlDB.SetMaxIdleConns(10)
+
+	// SetMaxOpenConns sets the maximum number of open connections to the database
+	sqlDB.SetMaxOpenConns(100)
 
 	// Auto migrate models
-	if err := DB.AutoMigrate(&models.User{}, &models.Room{}).Error; err != nil {
+	if err := DB.AutoMigrate(&models.User{}, &models.Room{}); err != nil {
 		return fmt.Errorf("failed to migrate database: %w", err)
 	}
 
@@ -41,6 +54,11 @@ func InitDB() error {
 // CloseDB closes the database connection
 func CloseDB() {
 	if DB != nil {
-		DB.Close()
+		sqlDB, err := DB.DB()
+		if err != nil {
+			log.Printf("Failed to get database object: %v", err)
+			return
+		}
+		sqlDB.Close()
 	}
 }

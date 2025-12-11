@@ -2,13 +2,13 @@ package auth
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
+	"github.com/Aloys-y/chat-go/config"
+	"github.com/Aloys-y/chat-go/db"
+	"github.com/Aloys-y/chat-go/models"
 	"github.com/dgrijalva/jwt-go"
-	"github.com/jinzhu/gorm"
-	"github.com/yourusername/chat-go/config"
-	"github.com/yourusername/chat-go/db"
-	"github.com/yourusername/chat-go/models"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -116,11 +116,11 @@ func RegisterUser(username, email, password, displayName string) (*models.User, 
 func LoginUser(email, password string) (*models.User, string, error) {
 	var user models.User
 	if err := db.DB.Where("email = ?", email).First(&user).Error; err != nil {
-		return nil, "", errors.New("invalid email or password")
+		return nil, "", errors.New("用户未注册")
 	}
 
 	if err := CheckPassword(user.PasswordHash, password); err != nil {
-		return nil, "", errors.New("invalid email or password")
+		return nil, "", errors.New("密码错误")
 	}
 
 	// Update last login and online status

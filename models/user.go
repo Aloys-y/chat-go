@@ -3,13 +3,13 @@ package models
 import (
 	"time"
 
-	"github.com/jinzhu/gorm"
+	"gorm.io/gorm"
 )
 
 type User struct {
 	gorm.Model
-	Username     string    `gorm:"unique_index;not null"`
-	Email        string    `gorm:"unique_index;not null"`
+	Username     string    `gorm:"uniqueIndex;not null"`
+	Email        string    `gorm:"uniqueIndex;not null"`
 	PasswordHash string    `gorm:"not null"`
 	DisplayName  string    `gorm:"not null"`
 	LastLogin    time.Time

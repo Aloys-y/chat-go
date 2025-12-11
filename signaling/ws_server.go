@@ -9,7 +9,7 @@ import (
 	"sync"
 
 	"github.com/gorilla/websocket"
-	"github.com/yourusername/chat-go/models"
+	"github.com/Aloys-y/chat-go/models"
 )
 
 var (
