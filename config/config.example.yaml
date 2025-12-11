@@ -1,0 +1,22 @@
+server:
+  http_port: 8080
+  grpc_port: 50051
+  ws_port: 8081
+
+database:
+  host: localhost
+  port: 3306
+  user: root
+  password: password
+  dbname: chat_go
+  charset: utf8mb4
+  parseTime: true
+
+auth:
+  secret_key: "your-secret-key-here"
+  token_expiry: 24h
+
+webrtc:
+  ice_servers:
+    - urls: "stun:stun.l.google.com:19302"
+    - urls: "stun:stun1.l.google.com:19302"
